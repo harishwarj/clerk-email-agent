@@ -1,0 +1,7 @@
+fastapi
+google-generativeai
+pydantic[email]
+pypdf
+python-dotenv
+python-multipart
+uvicorn[standard]
