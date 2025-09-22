@@ -1,62 +1,21 @@
-# main.py
-
 import os
 import smtplib
 from email.message import EmailMessage
 from fastapi import FastAPI, Form, File, UploadFile
 from pydantic import EmailStr
 from dotenv import load_dotenv
-import google.generativeai as genai
 import json
 
 # Load environment variables from .env file
 load_dotenv()
 
 # --- 1. Configure Services ---
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY must be set in the .env file")
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') 
+# (Gemini AI configuration has been removed)
 
 # Create the FastAPI application
 app = FastAPI()
 
-
-# --- 2. NEW AI Function: Drafts email using provided context ---
-async def generate_email_content_with_ai(
-    county: str,
-    municipality: str,
-    clerk_name: str
-) -> dict:
-    """
-    Uses the Gemini AI to generate a subject and body based on provided details.
-    """
-    print(f"Sending details to AI for {municipality}, {county}...")
-    
-    # A more focused prompt for the AI to draft the email
-    prompt = f"""
-    You are a helpful paralegal assistant for the Ameri Law Firm.
-    Your task is to draft a polite and professional OPRA request email.
-
-    Use the following information:
-    - County: "{county}"
-    - Municipality: "{municipality}"
-    - Clerk's Name: "{clerk_name}"
-
-    Generate a JSON object with two keys: "subject" and "body".
-    - The "subject" should be "OPRA Request: Accident Reports for {municipality}".
-    - The "body" should be addressed to the clerk by name and mention the municipality. It should state that the OPRA request form is attached.
-
-    Your entire response must be only the JSON object.
-    """
-    
-    response = await model.generate_content_async(prompt)
-    ai_response_text = response.text.strip().replace('```json', '').replace('```', '')
-    return json.loads(ai_response_text)
-
-
-# --- 3. Email Sending Function (no changes here) ---
+# --- 2. Email Sending Function (no changes here) ---
 def send_opra_email(
     recipient_email: str, 
     subject: str,
@@ -80,15 +39,15 @@ def send_opra_email(
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(sender_email, app_password)
             smtp.send_message(msg)
-        print(f"Successfully sent AI-generated email to {recipient_email}")
-        return {"status": "success", "message": f"AI-generated email sent to {recipient_email}"}
+        print(f"Successfully sent email to {recipient_email}")
+        return {"status": "success", "message": f"Email sent to {recipient_email}"}
     except Exception as e:
         print(f"Error sending email: {e}")
         return {"status": "error", "message": str(e)}
 
-# --- 4. UPDATED API Endpoint ---
+# --- 3. UPDATED API Endpoint (Now uses a preset template) ---
 @app.post("/generate-and-send-opra/")
-async def trigger_ai_agent(
+async def trigger_agent(
     clerk_email: EmailStr = Form(...),
     county: str = Form(...),
     municipality: str = Form(...),
@@ -96,19 +55,30 @@ async def trigger_ai_agent(
     file: UploadFile = File(...)
 ):
     """
-    Receives clerk details and a PDF, uses AI to generate content, then sends the email.
+    Receives clerk details and a PDF, uses a preset template, then sends the email.
     """
     pdf_content = await file.read()
     
+    # --- Create the email content from a fixed template ---
+    subject = f"OPRA Request: Accident Reports for {municipality}"
     
-    email_content = await generate_email_content_with_ai(county, municipality, clerk_name)
-    
-   
+    body = (
+        f"Dear {clerk_name},\n\n"
+        f"Please find our attached Open Public Records Act (OPRA) request for accident reports that occurred in {municipality}, {county}.\n\n"
+        "Kindly advise if you prefer to receive these requests via email or if you now use an online portal. If you use a portal, please reply with the direct link.\n\n"
+        "Thank you for your time and assistance.\n\n"
+        "Sincerely,\n"
+        "Nima Ameri, Esq.\n"
+        "Ameri Law Firm"
+    )
+
+    # --- Send the email ---
     result = send_opra_email(
         clerk_email,
-        email_content["subject"],
-        email_content["body"],
+        subject,
+        body,
         pdf_content,
         file.filename
     )
     return result
+
